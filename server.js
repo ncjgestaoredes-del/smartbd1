@@ -52,23 +52,31 @@ app.get('/', (req, res) => res.send("SEI Smart API Online"));
 
 // --- AUTH ---
 app.post('/api/auth/login', async (req, res) => {
-    const { email, password } = req.body;
+    const { schoolCode, email, password } = req.body;
+    
     try {
+        // Se for o SuperAdmin Central, ignora o schoolCode
+        if (email === 'admin@sistema.com' && password === 'admin') {
+            const [rows] = await pool.execute('SELECT * FROM users WHERE email = ?', [email]);
+            return res.json({ success: true, user: rows[0] });
+        }
+
+        // Caso contrário, valida o Código da Escola + Credenciais do Usuário
         const [rows] = await pool.execute(`
             SELECT u.*, s.status as schoolStatus, s.name as schoolName 
             FROM users u 
-            LEFT JOIN schools s ON u.schoolId = s.id 
-            WHERE u.email = ? AND u.password = ?
-        `, [email, password]);
+            INNER JOIN schools s ON u.schoolId = s.id 
+            WHERE s.accessCode = ? AND u.email = ? AND u.password = ?
+        `, [schoolCode, email, password]);
 
         if (rows.length > 0) {
             const user = rows[0];
-            if (user.schoolStatus === 'Bloqueado' && user.role !== 'SuperAdmin') {
+            if (user.schoolStatus === 'Bloqueado') {
                 return res.status(403).json({ success: false, message: 'O acesso da sua escola foi bloqueado pelo administrador central.' });
             }
             res.json({ success: true, user });
         } else {
-            res.status(401).json({ success: false, message: 'Credenciais inválidas ou e-mail não cadastrado.' });
+            res.status(401).json({ success: false, message: 'Código da escola ou credenciais inválidas.' });
         }
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -106,11 +114,11 @@ app.post('/api/schools/sync', async (req, res) => {
     try {
         for (const s of req.body) {
             await pool.execute(`
-                INSERT INTO schools (id, name, representativeName, email, contact, status, subscription)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE name=?, representativeName=?, email=?, contact=?, status=?, subscription=?
-            `, [s.id, s.name, s.representativeName, s.email, s.contact, s.status, JSON.stringify(s.subscription),
-                s.name, s.representativeName, s.email, s.contact, s.status, JSON.stringify(s.subscription)]);
+                INSERT INTO schools (id, name, accessCode, representativeName, email, contact, status, subscription)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE name=?, accessCode=?, representativeName=?, email=?, contact=?, status=?, subscription=?
+            `, [s.id, s.name, s.accessCode, s.representativeName, s.email, s.contact, s.status, JSON.stringify(s.subscription),
+                s.name, s.accessCode, s.representativeName, s.email, s.contact, s.status, JSON.stringify(s.subscription)]);
         }
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
