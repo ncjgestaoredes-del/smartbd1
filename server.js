@@ -33,10 +33,10 @@ async function syncGeneric(tableName, data, schoolId) {
     if (!data || !Array.isArray(data)) return;
     for (const item of data) {
         const columns = Object.keys(item);
-        if (!columns.includes('schoolId')) columns.push('schoolId');
+        if (!columns.includes('schoolId') && schoolId !== 'SYSTEM') columns.push('schoolId');
         
         const values = columns.map(k => {
-            if (k === 'schoolId') return schoolId;
+            if (k === 'schoolId' && schoolId !== 'SYSTEM') return schoolId;
             return typeof item[k] === 'object' ? JSON.stringify(item[k]) : item[k];
         });
 
@@ -62,9 +62,13 @@ app.post('/api/auth/login', async (req, res) => {
         `, [email, password]);
 
         if (rows.length > 0) {
-            res.json({ success: true, user: rows[0] });
+            const user = rows[0];
+            if (user.schoolStatus === 'Bloqueado' && user.role !== 'SuperAdmin') {
+                return res.status(403).json({ success: false, message: 'O acesso da sua escola foi bloqueado pelo administrador central.' });
+            }
+            res.json({ success: true, user });
         } else {
-            res.status(401).json({ success: false, message: 'Credenciais inválidas' });
+            res.status(401).json({ success: false, message: 'Credenciais inválidas ou e-mail não cadastrado.' });
         }
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -75,7 +79,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         const [users] = await pool.execute('SELECT u.name, u.schoolId, s.name as schoolName FROM users u LEFT JOIN schools s ON u.schoolId = s.id WHERE u.email = ?', [email]);
         
         if (users.length === 0) {
-            return res.status(404).json({ success: false, message: 'E-mail não encontrado.' });
+            return res.status(404).json({ success: false, message: 'E-mail não encontrado no sistema.' });
         }
 
         const user = users[0];
@@ -84,16 +88,16 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         await pool.execute(`
             INSERT INTO password_reset_requests (id, schoolId, schoolName, userEmail, userName, status)
             VALUES (?, ?, ?, ?, ?, 'Pendente')
-        `, [requestId, user.schoolId, user.schoolName || 'SaaS', email, user.name]);
+        `, [requestId, user.schoolId, user.schoolName || 'Acesso Global', email, user.name]);
 
-        res.json({ success: true, message: 'Solicitação enviada.' });
+        res.json({ success: true, message: 'Solicitação de recuperação enviada ao suporte.' });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // --- SAAS / SUPER ADMIN ---
 app.get('/api/schools', async (req, res) => {
     try {
-        const [rows] = await pool.execute('SELECT * FROM schools');
+        const [rows] = await pool.execute('SELECT * FROM schools ORDER BY createdAt DESC');
         res.json(rows.map(s => ({ ...s, subscription: typeof s.subscription === 'string' ? JSON.parse(s.subscription) : s.subscription })));
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -136,7 +140,6 @@ app.get('/api/school/:id/full-data', async (req, res) => {
             });
         }
         
-        // Settings especiais (settings e financial no frontend)
         const [settingsRows] = await pool.execute('SELECT * FROM school_settings WHERE schoolId = ?', [sid]);
         if (settingsRows.length > 0) {
             const s = settingsRows[0];
@@ -166,7 +169,8 @@ app.post('/api/school/:id/sync/:key', async (req, res) => {
             'notifications': 'notifications',
             'requests': 'school_requests',
             'topics': 'discussion_topics',
-            'messages': 'discussion_messages'
+            'messages': 'discussion_messages',
+            'password_requests': 'password_reset_requests'
         };
 
         const targetTable = keyMap[key];
@@ -178,7 +182,10 @@ app.post('/api/school/:id/sync/:key', async (req, res) => {
         }
 
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { 
+        console.error("Erro Sync:", err.message);
+        res.status(500).json({ error: err.message }); 
+    }
 });
 
 const PORT = process.env.PORT || 10000;
