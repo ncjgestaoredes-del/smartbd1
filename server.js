@@ -12,7 +12,7 @@ const dbConfig = {
     host: 'mysql-albertocossa.alwaysdata.net',
     user: '430726',
     password: 'Acossa@824018',
-    database: 'Database: albertocossa_bd1'
+    database: 'albertocossa_bd1'
 };
 
 let pool;
