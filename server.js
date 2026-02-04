@@ -9,10 +9,10 @@ app.use(express.json({ limit: '50mb' }));
 
 // Configuração do Banco de Dados
 const dbConfig = {
-    host: 'seu-host-mysql.com',
-    user: 'usuario',
-    password: 'senha-segura',
-    database: 'sei_smart_db'
+    host: 'mysql-albertocossa.alwaysdata.net',
+    user: '430726',
+    password: 'Acossa@824018',
+    database: 'Database: albertocossa_bd1'
 };
 
 let pool;
