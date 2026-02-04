@@ -124,6 +124,14 @@ app.post('/api/schools/sync', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.delete('/api/schools/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.execute('DELETE FROM schools WHERE id = ?', [id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/saas/password-requests', async (req, res) => {
     try {
         const [rows] = await pool.execute('SELECT * FROM password_reset_requests ORDER BY createdAt DESC');
