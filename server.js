@@ -55,10 +55,13 @@ app.post('/api/auth/login', async (req, res) => {
     const { schoolCode, email, password } = req.body;
     
     try {
+        const cleanEmail = email ? email.trim().toLowerCase() : '';
+        const cleanCode = schoolCode ? schoolCode.trim().toLowerCase() : '';
+
         // Se for o SuperAdmin Central, ignora o schoolCode
-        if (email === 'admin@sistema.com' && password === 'admin') {
-            const [rows] = await pool.execute('SELECT * FROM users WHERE email = ?', [email]);
-            return res.json({ success: true, user: rows[0] });
+        if (cleanEmail === 'admin@sistema.com' && password === 'admin') {
+            const [rows] = await pool.execute('SELECT * FROM users WHERE LOWER(email) = ?', [cleanEmail]);
+            if (rows.length > 0) return res.json({ success: true, user: rows[0] });
         }
 
         // Caso contrário, valida o Código da Escola + Credenciais do Usuário
@@ -66,8 +69,8 @@ app.post('/api/auth/login', async (req, res) => {
             SELECT u.*, s.status as schoolStatus, s.name as schoolName 
             FROM users u 
             INNER JOIN schools s ON u.schoolId = s.id 
-            WHERE s.accessCode = ? AND u.email = ? AND u.password = ?
-        `, [schoolCode, email, password]);
+            WHERE LOWER(s.accessCode) = ? AND LOWER(u.email) = ? AND u.password = ?
+        `, [cleanCode, cleanEmail, password]);
 
         if (rows.length > 0) {
             const user = rows[0];
@@ -76,15 +79,19 @@ app.post('/api/auth/login', async (req, res) => {
             }
             res.json({ success: true, user });
         } else {
+            console.log(`Falha de login: ${cleanEmail} na escola ${cleanCode}`);
             res.status(401).json({ success: false, message: 'Código da escola ou credenciais inválidas.' });
         }
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { 
+        console.error("Erro Login:", err.message);
+        res.status(500).json({ error: "Erro interno no servidor de autenticação." }); 
+    }
 });
 
 app.post('/api/auth/forgot-password', async (req, res) => {
     const { email } = req.body;
     try {
-        const [users] = await pool.execute('SELECT u.name, u.schoolId, s.name as schoolName FROM users u LEFT JOIN schools s ON u.schoolId = s.id WHERE u.email = ?', [email]);
+        const [users] = await pool.execute('SELECT u.name, u.schoolId, s.name as schoolName FROM users u LEFT JOIN schools s ON u.schoolId = s.id WHERE LOWER(u.email) = ?', [email.toLowerCase()]);
         
         if (users.length === 0) {
             return res.status(404).json({ success: false, message: 'E-mail não encontrado no sistema.' });
