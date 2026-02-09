@@ -28,7 +28,6 @@ async function connectDB() {
     }
 }
 
-// Helper para obter colunas de uma tabela (cache simples para performance)
 const tableColumnsCache = {};
 async function getTableColumns(tableName) {
     if (tableColumnsCache[tableName]) return tableColumnsCache[tableName];
@@ -43,7 +42,6 @@ async function getTableColumns(tableName) {
     }
 }
 
-// Helper genérico para UPSERT com filtro de colunas
 async function syncGeneric(tableName, data, schoolId) {
     if (!data || !Array.isArray(data)) return;
     
@@ -51,7 +49,6 @@ async function syncGeneric(tableName, data, schoolId) {
     if (dbColumns.length === 0) throw new Error(`Tabela ${tableName} não encontrada ou inacessível.`);
 
     for (const item of data) {
-        // Filtra apenas as propriedades que existem no banco de dados
         const itemWithSchool = { ...item };
         if (schoolId !== 'SYSTEM' && dbColumns.includes('schoolId')) {
             itemWithSchool.schoolId = schoolId;
@@ -75,10 +72,8 @@ async function syncGeneric(tableName, data, schoolId) {
 
 app.get('/', (req, res) => res.send("SEI Smart API Online v2.6"));
 
-// --- AUTH ---
 app.post('/api/auth/login', async (req, res) => {
     const { schoolCode, email, password } = req.body;
-    
     try {
         const cleanEmail = email ? email.trim().toLowerCase() : '';
         const cleanCode = schoolCode ? schoolCode.trim().toLowerCase() : '';
@@ -104,9 +99,7 @@ app.post('/api/auth/login', async (req, res) => {
         } else {
             res.status(401).json({ success: false, message: 'Código da escola ou credenciais inválidas.' });
         }
-    } catch (err) { 
-        res.status(500).json({ error: "Erro interno no servidor de autenticação." }); 
-    }
+    } catch (err) { res.status(500).json({ error: "Erro interno no servidor de autenticação." }); }
 });
 
 app.post('/api/auth/forgot-password', async (req, res) => {
@@ -114,16 +107,13 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     try {
         const [users] = await pool.execute('SELECT u.name, u.schoolId, s.name as schoolName FROM users u LEFT JOIN schools s ON u.schoolId = s.id WHERE LOWER(u.email) = ?', [email.toLowerCase()]);
         if (users.length === 0) return res.status(404).json({ success: false, message: 'E-mail não encontrado.' });
-
         const user = users[0];
         const requestId = `pw_${Date.now()}`;
-        await pool.execute(`INSERT INTO password_reset_requests (id, schoolId, schoolName, userEmail, userName, status) VALUES (?, ?, ?, ?, ?, 'Pendente')`, 
-        [requestId, user.schoolId, user.schoolName || 'Acesso Global', email, user.name]);
+        await pool.execute(`INSERT INTO password_reset_requests (id, schoolId, schoolName, userEmail, userName, status) VALUES (?, ?, ?, ?, ?, 'Pendente')`, [requestId, user.schoolId, user.schoolName || 'Acesso Global', email, user.name]);
         res.json({ success: true, message: 'Solicitação enviada.' });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- SAAS ---
 app.get('/api/schools', async (req, res) => {
     try {
         const [rows] = await pool.execute('SELECT * FROM schools ORDER BY createdAt DESC');
@@ -152,7 +142,6 @@ app.get('/api/saas/password-requests', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- SCHOOL DATA ---
 app.get('/api/school/:id/full-data', async (req, res) => {
     const sid = req.params.id;
     try {
@@ -160,9 +149,9 @@ app.get('/api/school/:id/full-data', async (req, res) => {
         const results = {};
         
         for (const table of tables) {
-            const [rows] = await pool.execute(`SELECT * FROM ${table} WHERE ${table === 'discussion_topics' ? 'schoolId' : 'schoolId'} = ?`, [sid]);
+            const [rows] = await pool.execute(`SELECT * FROM ${table} WHERE schoolId = ?`, [sid]);
             results[table] = rows.map(r => {
-                const jsonCols = ['subscription', 'subjectsByClass', 'teachers', 'studentIds', 'financialProfile', 'documents', 'grades', 'examGrades', 'attendance', 'behavior', 'payments', 'extraCharges', 'items', 'metadata', 'participantIds', 'availability'];
+                const jsonCols = ['subscription', 'subjectsByClass', 'teachers', 'studentIds', 'financialProfile', 'documents', 'grades', 'examGrades', 'attendance', 'behavior', 'behaviorEvaluations', 'payments', 'extraCharges', 'items', 'metadata', 'participantIds', 'availability'];
                 const item = { ...r };
                 jsonCols.forEach(col => { if(item[col] && typeof item[col] === 'string') try { item[col] = JSON.parse(item[col]); } catch(e){} });
                 return item;
@@ -175,10 +164,8 @@ app.get('/api/school/:id/full-data', async (req, res) => {
             results.settings = typeof s.general_settings === 'string' ? JSON.parse(s.general_settings) : s.general_settings;
             results.financial = typeof s.financial_settings === 'string' ? JSON.parse(s.financial_settings) : s.financial_settings;
         }
-
         const [msgs] = await pool.execute('SELECT m.* FROM discussion_messages m JOIN discussion_topics t ON m.topicId = t.id WHERE t.schoolId = ?', [sid]);
         results.messages = msgs;
-
         res.json(results);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -187,14 +174,12 @@ app.post('/api/school/:id/sync/:key', async (req, res) => {
     const sid = req.params.id;
     const key = req.params.key;
     const data = req.body;
-
     try {
         const keyMap = {
             'users': 'users', 'students': 'students', 'turmas': 'turmas', 'academic_years': 'academic_years',
             'expenses': 'expenses', 'notifications': 'notifications', 'requests': 'school_requests',
             'topics': 'discussion_topics', 'messages': 'discussion_messages', 'password_requests': 'password_reset_requests'
         };
-
         const targetTable = keyMap[key];
         if (targetTable) {
             await syncGeneric(targetTable, Array.isArray(data) ? data : [data], sid);
@@ -208,5 +193,5 @@ app.post('/api/school/:id/sync/:key', async (req, res) => {
 
 const PORT = process.env.PORT || 10000;
 connectDB().then(() => {
-    app.listen(PORT, () => console.log(`Servidor v2.6 pronto na porta ${PORT}`));
+    app.listen(PORT, () => console.log(`Servidor v2.7 pronto na porta ${PORT}`));
 });
