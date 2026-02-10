@@ -59,6 +59,7 @@ async function syncGeneric(tableName, data, schoolId) {
         const values = validKeys.map(k => {
             const val = itemWithSchool[k];
             if (val === undefined || val === null) return null;
+            // Se for objeto ou array, arquiva como JSON no MySQL
             return typeof val === 'object' ? JSON.stringify(val) : val;
         });
 
@@ -70,7 +71,7 @@ async function syncGeneric(tableName, data, schoolId) {
     }
 }
 
-app.get('/', (req, res) => res.send("SEI Smart API Online v2.6"));
+app.get('/', (req, res) => res.send("SEI Smart API Online v2.7"));
 
 app.post('/api/auth/login', async (req, res) => {
     const { schoolCode, email, password } = req.body;
@@ -151,7 +152,7 @@ app.get('/api/school/:id/full-data', async (req, res) => {
         for (const table of tables) {
             const [rows] = await pool.execute(`SELECT * FROM ${table} WHERE schoolId = ?`, [sid]);
             results[table] = rows.map(r => {
-                const jsonCols = ['subscription', 'subjectsByClass', 'teachers', 'studentIds', 'financialProfile', 'documents', 'grades', 'examGrades', 'attendance', 'behavior', 'behaviorEvaluations', 'payments', 'extraCharges', 'items', 'metadata', 'participantIds', 'availability'];
+                const jsonCols = ['subscription', 'subjectsByClass', 'teachers', 'studentIds', 'financialProfile', 'documents', 'grades', 'examGrades', 'attendance', 'behavior', 'behaviorEvaluations', 'payments', 'extraCharges', 'items', 'metadata', 'participantIds', 'availability', 'scores'];
                 const item = { ...r };
                 jsonCols.forEach(col => { if(item[col] && typeof item[col] === 'string') try { item[col] = JSON.parse(item[col]); } catch(e){} });
                 return item;
