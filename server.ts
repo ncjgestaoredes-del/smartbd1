@@ -266,7 +266,7 @@ async function startServer() {
         app.use(vite.middlewares);
     } else {
         app.use(express.static(path.join(__dirname, 'dist')));
-        app.get('/:path*', (req, res) => {
+        app.get('*', (req, res) => {
             res.sendFile(path.join(__dirname, 'dist', 'index.html'));
         });
     }
@@ -277,4 +277,7 @@ async function startServer() {
     });
 }
 
-startServer();
+startServer().catch(err => {
+    console.error("Erro fatal ao iniciar o servidor:", err);
+    process.exit(1);
+});
