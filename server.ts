@@ -28,7 +28,7 @@ app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
-const dbConfig = {
+const dbConfig: mysql.PoolOptions = {
     host: process.env.DB_HOST || 'mysql-albertocossa.alwaysdata.net',
     user: process.env.DB_USER || '430726',
     password: process.env.DB_PASSWORD || 'Acossa@824018',
@@ -38,14 +38,24 @@ const dbConfig = {
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
     // FORÇAR FUSO HORÁRIO NA CONEXÃO MYSQL
-    timezone: '+02:00'
+    timezone: '+02:00',
+    // Adicionar SSL para conexões com bancos de dados em nuvem (como AlwaysData/Aiven)
+    ssl: {
+        rejectUnauthorized: false
+    }
 };
 
 let pool: mysql.Pool;
 
 async function connectDB() {
     try {
+        console.log(`Tentando conectar ao MySQL em: ${dbConfig.host}...`);
         pool = await mysql.createPool(dbConfig);
+        
+        // Testar a conexão imediatamente
+        const [test]: any = await pool.query("SELECT 1");
+        console.log("Teste de conexão SELECT 1: OK");
+
         // Garantir que a sessão atual do MySQL use o fuso de Moçambique
         await pool.query("SET time_zone = '+02:00'");
         console.log("Conexão MySQL estabelecida em CAT (UTC+2) - Moçambique.");
@@ -117,7 +127,15 @@ async function startServer() {
     // Iniciar conexão em segundo plano para não bloquear o startup do servidor no Render
     connectDB().catch(err => console.error("Erro inicial na conexão DB:", err));
 
-    app.get('/api/health', (req, res) => res.send("SEI Smart API Online v2.9 - Moçambique CAT Zone"));
+    app.get('/api/health', async (req, res) => {
+        try {
+            if (!pool) throw new Error("Pool não inicializado.");
+            await pool.query("SELECT 1");
+            res.json({ status: "online", database: "connected", zone: "Moçambique CAT" });
+        } catch (err: any) {
+            res.status(500).json({ status: "online", database: "error", error: err.message });
+        }
+    });
 
     app.post('/api/auth/login', async (req, res) => {
         const { schoolCode, email, password } = req.body;
@@ -248,7 +266,7 @@ async function startServer() {
         app.use(vite.middlewares);
     } else {
         app.use(express.static(path.join(__dirname, 'dist')));
-        app.get('/*', (req, res) => {
+        app.get('/:path*', (req, res) => {
             res.sendFile(path.join(__dirname, 'dist', 'index.html'));
         });
     }
