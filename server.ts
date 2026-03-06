@@ -3,7 +3,7 @@ import express from 'express';
 import mysql from 'mysql2/promise';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
+// import { createServer as createViteServer } from 'vite'; // Removed top-level import
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,6 +14,14 @@ const __dirname = path.dirname(__filename);
 
 // FORÇAR FUSO HORÁRIO DE MOÇAMBIQUE NO PROCESSO NODE
 process.env.TZ = 'Africa/Maputo';
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 const app = express();
 app.use(cors());
@@ -106,7 +114,8 @@ async function syncGeneric(tableName: string, data: any[], schoolId: string) {
 }
 
 async function startServer() {
-    await connectDB();
+    // Iniciar conexão em segundo plano para não bloquear o startup do servidor no Render
+    connectDB().catch(err => console.error("Erro inicial na conexão DB:", err));
 
     app.get('/api/health', (req, res) => res.send("SEI Smart API Online v2.9 - Moçambique CAT Zone"));
 
@@ -231,6 +240,7 @@ async function startServer() {
 
     // Vite middleware for development
     if (process.env.NODE_ENV !== "production") {
+        const { createServer: createViteServer } = await import('vite');
         const vite = await createViteServer({
             server: { middlewareMode: true },
             appType: "spa",
@@ -243,8 +253,8 @@ async function startServer() {
         });
     }
 
-    const PORT = 3000;
-    app.listen(PORT, "0.0.0.0", () => {
+    const PORT = process.env.PORT || 3000;
+    app.listen(Number(PORT), "0.0.0.0", () => {
         console.log(`Servidor v2.9 CAT Moçambique na porta ${PORT}`);
     });
 }
