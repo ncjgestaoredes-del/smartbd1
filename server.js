@@ -2,6 +2,7 @@
 const express = require('express');
 const mysql = require('mysql2/promise');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 // FORÇAR FUSO HORÁRIO DE MOÇAMBIQUE NO PROCESSO NODE
@@ -230,6 +231,15 @@ app.post('/api/school/:id/sync/:key', async (req, res) => {
     } catch (err) { 
         res.status(500).json({ error: err.message }); 
     }
+});
+
+// Serve static files from the React app
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// The "catchall" handler: for any request that doesn't
+// match one above, send back React's index.html file.
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 const PORT = process.env.PORT || 10000;
