@@ -33,6 +33,22 @@ async function connectDB() {
         // Garantir que a sessão atual do MySQL use o fuso de Moçambique
         await pool.query("SET time_zone = '+02:00'");
         console.log("Conexão MySQL estabelecida em CAT (UTC+2) - Moçambique.");
+
+        // MIGRATION: Garantir colunas em discussion_topics
+        try {
+            const [cols] = await pool.execute("SHOW COLUMNS FROM discussion_topics");
+            const colNames = cols.map(c => c.Field);
+            if (!colNames.includes('turmaId')) {
+                await pool.execute("ALTER TABLE discussion_topics ADD COLUMN turmaId VARCHAR(50)");
+                console.log("Coluna turmaId adicionada a discussion_topics.");
+            }
+            if (!colNames.includes('classLevel')) {
+                await pool.execute("ALTER TABLE discussion_topics ADD COLUMN classLevel VARCHAR(50)");
+                console.log("Coluna classLevel adicionada a discussion_topics.");
+            }
+        } catch (e) {
+            console.error("Erro na migração de discussion_topics:", e.message);
+        }
     } catch (err) {
         console.error("Falha crítica na conexão com o Banco de Dados:", err.message);
     }
@@ -161,15 +177,24 @@ app.get('/api/saas/password-requests', async (req, res) => {
 app.get('/api/school/:id/full-data', async (req, res) => {
     const sid = req.params.id;
     try {
-        const tables = ['users', 'students', 'turmas', 'academic_years', 'expenses', 'notifications', 'school_requests', 'discussion_topics'];
+        const tables = [
+            { table: 'users', key: 'users' },
+            { table: 'students', key: 'students' },
+            { table: 'turmas', key: 'turmas' },
+            { table: 'academic_years', key: 'academic_years' },
+            { table: 'expenses', key: 'expenses' },
+            { table: 'notifications', key: 'notifications' },
+            { table: 'school_requests', key: 'requests' },
+            { table: 'discussion_topics', key: 'topics' }
+        ];
         const results = {};
-        for (const table of tables) {
-            const [rows] = await pool.execute(`SELECT * FROM ${table} WHERE schoolId = ?`, [sid]);
-            results[table] = rows.map(r => {
+        for (const item of tables) {
+            const [rows] = await pool.execute(`SELECT * FROM ${item.table} WHERE schoolId = ?`, [sid]);
+            results[item.key] = rows.map(r => {
                 const jsonCols = ['subscription', 'subjectsByClass', 'teachers', 'studentIds', 'financialProfile', 'documents', 'grades', 'examGrades', 'attendance', 'behavior', 'behaviorEvaluations', 'payments', 'extraCharges', 'items', 'metadata', 'participantIds', 'availability', 'scores'];
-                const item = { ...r };
-                jsonCols.forEach(col => { if(item[col] && typeof item[col] === 'string') try { item[col] = JSON.parse(item[col]); } catch(e){} });
-                return item;
+                const row = { ...r };
+                jsonCols.forEach(col => { if(row[col] && typeof row[col] === 'string') try { row[col] = JSON.parse(row[col]); } catch(e){} });
+                return row;
             });
         }
         const [settingsRows] = await pool.execute('SELECT * FROM school_settings WHERE schoolId = ?', [sid]);
