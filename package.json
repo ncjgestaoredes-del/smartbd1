@@ -1,9 +1,8 @@
-
 {
-  
   "name": "sei-smart-frontend",
   "private": true,
   "version": "2.0.0",
+  "type": "module",
   "scripts": {
     "start": "node server.ts",
     "dev": "tsx server.ts",
